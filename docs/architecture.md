@@ -179,3 +179,33 @@ Authorization is enforced **in the Data Access Layer** (DAL), not only at the ed
 3. **Static image map** first; clickable pins later (Leaflet/MapLibre) if wanted.
 4. **No email service** initially: the GM creates accounts with a temporary password; players
    change it on first login. (Magic-link / password-reset email can be added later.)
+
+## 8. Content security (bots & scrapers)
+
+Content is stored as Markdown in **Postgres** (Neon), which is private and not directly reachable
+by crawlers. Security is therefore about **what the app serves**, not where the content is stored.
+
+- **Auth-gated content is invisible to bots by default.** Anonymous crawlers (`GPTBot`,
+  `ClaudeBot`, `Google-Extended`, `CCBot`, generic scrapers, …) cannot authenticate, so
+  `player`- and `gm`-tier pages return a login redirect or `401` — never the Markdown.
+- **The one real risk is accidental public caching.** Next 16 enables Cache Components / static
+  prerendering. If a gated page is prerendered (or edge-cached) before its auth check runs, its
+  HTML could become publicly fetchable. Rules:
+  1. `authorize()` runs **before** any data fetch in the server component; `unauthorized()` /
+     `forbidden()` interrupt the render (and inject `noindex`).
+  2. Gated routes render **dynamically** (`export const dynamic = 'force-dynamic'`, or rely on
+     `cookies()` / `unauthorized()`); no static prerender.
+  3. Authenticated responses send `Cache-Control: private, no-store`; never use a public
+     `cacheTag` or `use cache` for user-specific data.
+- **Public (`tier: public`) content is scrapable by design** and may be ingested into AI training
+  sets. `robots.txt` disallows and `noindex` / `noai` meta are **advisory** — reputable crawlers
+  mostly honor them, malicious ones ignore them. Keep the public surface minimal (a hook + login)
+  and put nothing sensitive in public metadata / OG tags / `sitemap.xml`.
+- **Auth cannot stop an authorized reader from copying.** A player — or anyone holding the shared
+  **Guest-GM reviewer account** (which reads `gm`-tier content) — can copy text out by hand. Treat
+  that account like a secret (strong password, revoke when done). Optional per-account
+  **watermarking** aids leak attribution, not prevention.
+
+Controls (phase placement in the implementation plan): `robots.txt` + `X-Robots-Tag` on gated
+routes, `noindex` on gated pages, dynamic rendering + private caching, login rate limiting, and an
+optional Vercel WAF / bot-management layer plus a copyright / terms-of-use notice.

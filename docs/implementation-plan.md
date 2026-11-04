@@ -22,6 +22,8 @@ one experienced developer.
 - [ ] Create a **Neon** project + branch; capture `DATABASE_URL`
 - [ ] Create a **Vercel** project (import repo); configure env vars (see Architecture §6)
 - [ ] Configure custom domain `worldofvarun.com`
+- [ ] Add `robots.txt` disallowing AI crawlers (`GPTBot`, `ClaudeBot`, `Google-Extended`, `CCBot`)
+      on everything except the public landing page (see Architecture §8)
 - [ ] **Done:** empty app deploys on Vercel, database reachable
 
 ## Phase 2 — Prisma schema + migrations *(≈ half day)*
@@ -35,15 +37,16 @@ one experienced developer.
 ## Phase 3 — Authentication (Better Auth) *(≈ 1–2 days)*
 
 - [ ] Install Better Auth + Prisma adapter; generate auth tables into schema; migrate
-- [ ] Configure `emailAndPassword` plugin; add custom `role` field to `user`
+- [ ] Configure `emailAndPassword` plugin; add custom `role` and `readOnly` fields to `user`
 - [ ] Wire `api/auth/[...all]/route.ts` handler
-- [ ] Build `src/lib/dal.ts`: `verifySession()`, `requireRole()`, `authorize()` using
-      `unauthorized()` / `forbidden()`
+- [ ] Build `src/lib/dal.ts`: `verifySession()` and `authorize()` (checks `role` + `readOnly`)
+      using `unauthorized()` / `forbidden()`
 - [ ] Login page (`/login`) + sign-out
 - [ ] Invite-only user creation: GM creates account (email + temp password) in an admin action;
       first-login password change
+- [ ] Login rate limiting / brute-force protection
 - [ ] Route-group protection: `(site)`/`(gm)` gate via DAL; optional `proxy.ts` redirect to `/login`
-- [ ] **Done:** roles `gm`/`guest`/`player` can log in; unauthorized access is blocked
+- [ ] **Done:** GM (admin), Player, and read-only (guest) accounts can log in; unauthorized access is blocked
 
 ## Phase 4 — Content & GM admin editor *(≈ 2–3 days)*
 
@@ -51,7 +54,9 @@ one experienced developer.
 - [ ] Markdown renderer: `react-markdown` + GFM + cross-link resolver (`[[Slug]]` / `wiki:slug`)
 - [ ] Reveal workflow UI: change `tier`, set `revealedAt`
 - [ ] Tags + related-article cross-links editing
-- [ ] Server Actions for all mutations, re-checking `requireRole('GM')`
+- [ ] Server Actions for all mutations, re-checking `authorize()` (role `GM`, `readOnly: false`)
+- [ ] Gated pages render dynamically (`dynamic = 'force-dynamic'`) with `Cache-Control: private` —
+      no static prerender of protected content (see Architecture §8)
 - [ ] **Done:** GM can author, link, and reveal articles from the browser
 
 ## Phase 5 — Player-facing site *(≈ 2–3 days)*
@@ -63,6 +68,7 @@ one experienced developer.
 - [ ] Character pages: GM-authored intro + player **self-edit** form
       (name, class, ancestry, background) and `CharacterUpdate` status entries
 - [ ] Cache invalidation via `revalidateTag` on reveal/edit
+- [ ] `noindex` on gated pages; nothing sensitive in public metadata / OG / `sitemap.xml`
 - [ ] **Done:** players browse, read, and maintain their own character
 
 ## Phase 6 — Images (Cloudinary) *(≈ 1 day)*
