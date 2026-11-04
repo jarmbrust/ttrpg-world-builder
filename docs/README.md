@@ -1,27 +1,27 @@
-# World of Varun — Documentation
+# TTRPG World Builder — Documentation
 
-Planning and architecture docs for the **World of Varun** campaign website.
+Planning and architecture docs for the **TTRPG World Builder** platform.
 
-**What it is:** a read-mostly lore wiki for a tabletop RPG campaign (a D&D 5e-like system),
-built with Next.js 16 + Postgres, deployed on Vercel at `worldofvarun.com`. The Game Master
-(GM) authors and curates the world; players read and (optionally) maintain their own character
-page.
+**What it is:** a multi-tenant campaign wiki for tabletop RPGs, built with Next.js 16 + Postgres
+and deployed on Vercel at `ttrpgworldbuilder.com`. GMs create worlds and author lore; players read
+and (optionally) maintain their own characters. Lore lives in Postgres, never in git.
 
 ## Index
 
-- **[Architecture](architecture.md)** — stack, pinned versions, and the key decisions
-  (including why Better Auth rather than NextAuth, and why content lives in the DB, not git).
-- **[Data Model](data-model.md)** — Prisma schema, the access-control model, content types,
-  and the URL map.
+- **[Architecture](architecture.md)** — stack, pinned versions, and key decisions (including why
+  Better Auth rather than NextAuth, and the multi-tenant model).
+- **[Data Model](data-model.md)** — multi-tenant Prisma schema, roles, and the URL map.
 - **[Implementation Plan](implementation-plan.md)** — phased build plan with task checklists.
 
 ## Build status
 
 - [x] Phase 0 — scaffold + docs
 - [ ] Phase 1 — repo, deploy, database
-- [ ] Phase 2 — Prisma schema + migrations
-- [ ] Phase 3 — authentication (Better Auth)
-- [ ] Phase 4 — content + GM admin editor
-- [ ] Phase 5 — player-facing site
-- [ ] Phase 6 — images (Cloudinary)
-- [ ] Phase 7 — seed content + polish
+- [ ] Phase 2 — multi-tenant schema + migrations
+- [ ] Phase 3 — auth + platform roles + memberships
+- [ ] Phase 4 — world creation + GM authoring
+- [ ] Phase 5 — player-facing world site
+- [ ] Phase 6 — directory + request-access + GM dashboard
+- [ ] Phase 7 — images (Cloudinary)
+- [ ] Phase 8 — quotas + platform admin + export
+- [ ] Phase 9 — polish + security hardening

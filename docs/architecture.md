@@ -2,15 +2,18 @@
 
 ## 1. Overview
 
-**World of Varun** is a Next.js application that serves a read-mostly campaign wiki with two base
-roles — **Player** and **GM** — plus a read-only **guest mode** (admin-toggled) used for demos and
-interviews.
+**TTRPG World Builder** is a **multi-tenant** Next.js application: one deployment hosts many
+independent campaign **worlds**, each owned by a GM and shared with that GM's players.
 
-- **Authoring:** the GM writes content as Markdown in a private, in-browser editor; content is
-  stored in Postgres — **never** in the (public) git repository.
-- **Reading:** players browse cross-linked articles, a session-recap feed, and a static map.
-- **Revealing:** lore starts hidden (GM-only) and is "revealed" to players as the campaign
-  progresses.
+- **Tenancy:** a `World` is the tenant. Every article, character, image, and tag belongs to exactly
+  one world, and every query is scoped by `worldId`.
+- **Authoring:** a GM writes content as Markdown in a private, in-browser editor; content is stored
+  in Postgres — **never** in this (public) git repository.
+- **Reading:** players browse cross-linked articles, a session-recap feed, characters, and a static
+  map, filtered to their memberships.
+- **Revealing:** lore starts hidden (GM-only) and is "revealed" to players as the campaign progresses.
+- **Joining:** a world exposes a public one-line tagline; to read it, a visitor requests access and
+  the GM approves them.
 
 ## 2. Stack and pinned versions
 
@@ -41,171 +44,188 @@ interviews.
 - **ESLint:** on **10.x**. We deliberately **dropped `eslint-config-next`** (which dragged in EOL/
   stale plugins: `eslint-plugin-react` is EOL, `jsx-a11y` last shipped Oct 2024, `import` last
   shipped Jun 2025 — all capped at ESLint 9) in favour of a lean flat config: `@eslint/js` +
-  `typescript-eslint` + `@next/eslint-plugin-next` + `@eslint-react/eslint-plugin`. This keeps us on
-  current, maintained tooling. Import rules are intentionally omitted (TypeScript already catches
-  bad imports) and accessibility rules are deferred (no maintained ESLint-10 successor yet).
-- **`@types/node`:** the scaffold defaulted to `^20`; this has been bumped to `^26` to match the
-  Node runtime.
+  `typescript-eslint` + `@next/eslint-plugin-next` + `@eslint-react/eslint-plugin`. Import rules are
+  omitted (TypeScript already catches bad imports) and accessibility rules are deferred.
+- **`@types/node`:** bumped to `^26` to match the Node runtime.
 - **Prisma:** v8 is a rewrite and still RC. Pin to the latest stable **7.x**.
 
 ## 3. Key decisions
 
 ### D1 — Public repo, content in the database
 
-The GitHub repository is **public** (code + docs only). All lore content, GM notes, and art
-references live in **Postgres**, entered through the GM admin editor. Nothing sensitive is ever
-committed to git. (This was the resolution to "author in Markdown, but don't publish it.")
+The GitHub repository is **public** (code + docs only). All world content, GM notes, and art
+references live in **Postgres**, entered through the GM editor. Nothing sensitive is committed to
+git.
 
 ### D2 — Better Auth instead of NextAuth
 
 NextAuth.js/Auth.js was **deprecated** in 2025 and folded into **Better Auth** (which Vercel
-acquired in July 2026). For an email/password app on Vercel, Better Auth is the current,
-actively-maintained choice. We use its `emailAndPassword` plugin with the Prisma adapter and add a
-custom `role` field to its `user` table.
+acquired in July 2026). We use its `emailAndPassword` plugin with the Prisma adapter and add a
+custom `platformRole` field to its `user` table.
 
-### D3 — Two roles + guest mode (the GM is the admin)
+### D3 — Multi-tenant model (World + Membership)
 
-There are two base roles — `PLAYER` and `GM` — and the **GM is the admin** (no separate admin
-role). Read-only access is a temporary, admin-toggled **`readOnly` flag** on the account (guest
-mode), not a role. Combining role × readOnly yields four account types: GM (admin), Player,
-Guest-Player, and Guest-GM (see §4).
+A `World` is the tenant and the unit of ownership. A `Membership` links a `User` to a `World` with
+a role (`GM` or `PLAYER`). Platform-wide authority is a separate `platformRole` (`USER` | `ADMIN`).
+For v1:
 
-### D4 — Reveal workflow
+- **One GM per world**, recorded as `World.ownerId` (the "primary" GM if co-GMs ever arrive).
+- A user may be **GM of up to 3 worlds**; **player memberships are unlimited**.
+- A GM is not also a player in their own world (v1).
 
-Every article/image has a visibility `tier` (`public | player | gm`). "Revealing" content is the
-act of moving it `gm → player` (a `revealedAt` timestamp is recorded). This lets the GM prep
-lore ahead of time and surface it to players as it becomes known in-game.
+The `Membership` join-table replaces "flags on the user": it cleanly expresses "GM of world X,
+player in world Y, player in world Z."
 
-### D5 — Markdown in DB, rendered with react-markdown
+### D4 — Closed beta + request access
 
-Bodies are stored as Markdown text and rendered server-side with `react-markdown` + GFM. A custom
-link resolver turns `[[Slug]]`-style or `[text](wiki:slug)` links into cross-links between
-articles (see data model).
+GMs are onboarded by the platform admin (an admin-granted `canCreateWorlds` flag). Players join a
+world by sending an **in-app access request** (`WorldJoinRequest`, requires an account); the GM
+approves or declines. No public self-service GM signup, no email service in v1.
 
-### D6 — Cloudinary for protected images
+### D5 — Reveal workflow
 
-Non-sensitive art may be committed to the public repo, but anything that should stay hidden until
-revealed is stored in Cloudinary and served through an authenticated route that returns a
-short-lived signed URL (or streams bytes) after checking the viewer's tier.
+Every article/image has a visibility `tier` (`public | player | gm`). "Revealing" content is moving
+it `gm → player` (a `revealedAt` timestamp is recorded), per world.
 
-### D7 — Vercel + Neon
+### D6 — Markdown in DB, rendered with react-markdown
+
+Bodies are stored as Markdown and rendered server-side with `react-markdown` + GFM. A custom link
+resolver turns `[[Slug]]` / `[text](wiki:slug)` into cross-links scoped to the same world.
+
+### D7 — Cloudinary for protected images
+
+Art that should stay hidden until revealed is stored in Cloudinary and served through an
+authenticated route that returns a short-lived signed URL (or streams bytes) after checking the
+viewer's tier.
+
+### D8 — Vercel + Neon
 
 Vercel hosts the app; Neon hosts serverless Postgres. Both read `engines.node` for the runtime.
 
-### D8 — Lean ESLint 10 config (no `eslint-config-next`)
+### D9 — Lean ESLint 10 config (no `eslint-config-next`)
 
-Rather than `eslint-config-next` (whose plugin dependencies are EOL/stale and block ESLint 10), the
-lint setup is a lean flat config: `@eslint/js` (core rules) + `typescript-eslint` +
-`@next/eslint-plugin-next` (`core-web-vitals`) + `@eslint-react/eslint-plugin` (React + hooks rules,
-the maintained successor to the EOL `eslint-plugin-react`). Import rules are omitted (redundant with
-TypeScript); accessibility rules are deferred. Verified: `pnpm lint` passes and TSX files are linted.
+`@eslint/js` (core rules) + `typescript-eslint` + `@next/eslint-plugin-next` (`core-web-vitals`) +
+`@eslint-react/eslint-plugin` (React + hooks). Import rules omitted; accessibility deferred.
+Verified: `pnpm lint` passes and TSX files are linted.
+
+### D10 — Quotas and export
+
+- **World cap:** a GM may own ≤ 3 worlds (constant, easy to change).
+- **Storage cap:** a per-world `quotaBytes` (default 20 MB of text), enforced on write via
+  `sum(octet_length(body))` over the world's articles.
+- **Export:** a GM can download their world's articles as a zip of Markdown files (backup / offline).
 
 ## 4. Access-control model
 
-### Roles and account types
+### Platform roles
 
-Two base roles; the **GM is the admin** (no separate admin role). Read-only access is a temporary
-**`readOnly` flag** (guest mode) that the admin toggles on any account.
+| Role | Meaning |
+|---|---|
+| `ADMIN` | The platform owner. Manages GMs/worlds, quotas, and membership approvals; can view any world. |
+| `USER` | A normal account. Authority comes from per-world memberships. |
 
-| Account type | `role` | `readOnly` | Reads | Writes |
+`User.canCreateWorlds` (admin-granted) lets an approved user create up to 3 worlds.
+
+### World roles (via `Membership`)
+
+| Role | Meaning |
+|---|---|
+| `GM` | The world owner (`World.ownerId`): author, reveal, invite/approve members, manage the world. |
+| `PLAYER` | Reads public + player-tier content in that world; manages their own PCs. |
+| *(readOnly)* | Either role can be marked `readOnly` for view-only access. |
+
+### Permission matrix (scoped to one world)
+
+| Capability | anon | Player | GM (owner) | Platform admin |
 |---|---|---|---|---|
-| **GM (admin)** | `GM` | `false` | public + player + gm | full (author, reveal, manage users, toggle guest) |
-| **Player** | `PLAYER` | `false` | public + player | edit own character |
-| **Guest-Player** | `PLAYER` | `true` | public + player | none |
-| **Guest-GM** | `GM` | `true` | public + player + gm¹ | none |
-| *(anon)* | — | — | public only | none |
-
-¹ Guest-GM sees gm-tier content by default. A future global **`hideGmSecretsFromGuests`** setting
-(admin-toggled) would drop Guest-GM's read scope to `player` when enabled.
-
-### Permission matrix
-
-| Capability | anon | Player | Guest-Player | GM (admin) | Guest-GM |
-|---|---|---|---|---|---|
-| Read `public` content | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Read `player` content | — | ✅ | ✅ | ✅ | ✅ |
-| Read `gm` content | — | — | — | ✅ | ✅¹ |
-| Edit own character page | — | ✅ | — | ✅ (any) | — |
-| Create / edit / delete articles | — | — | — | ✅ | — |
-| Reveal content (tier change) | — | — | — | ✅ | — |
-| Manage users / toggle guest mode | — | — | — | ✅ | — |
-| View admin (GM) screen | — | — | — | ✅ | ✅ (view-only) |
-
-¹ As above: `hideGmSecretsFromGuests` (future) would remove this.
+| See world directory + taglines | ✅ | ✅ | ✅ | ✅ |
+| Read `public` articles | ✅ | ✅ | ✅ | ✅ |
+| Read `player` articles | — | ✅ | ✅ | ✅ |
+| Read `gm` articles | — | — | ✅ | ✅ |
+| Edit own PCs | — | ✅ | — | ✅ |
+| Create / edit NPCs | — | — | ✅ | ✅ |
+| Create / edit / delete articles | — | — | ✅ | ✅ |
+| Reveal content (tier change) | — | — | ✅ | ✅ |
+| Manage members / access requests | — | — | ✅ | ✅ |
+| Create a world | — | — | — | ✅ (via admin grant) |
+| View platform admin | — | — | — | ✅ |
 
 ### Enforcement
 
 Authorization is enforced **in the Data Access Layer** (DAL), not only at the edge:
 
-1. A `verifySession()` helper reads the session (Better Auth) and returns the user, `role`, and
-   `readOnly`.
-2. A single `authorize(action)` helper checks **role and `readOnly`** and throws `unauthorized()`
-   (401) when not signed in, or `forbidden()` (403) when signed in but lacking permission.
-   `readOnly: true` blocks **every** mutation — including reveal and account management.
-3. Server Components call `authorize()` before querying; **Server Actions** re-check it before any
-   mutation (Next explicitly warns against relying on proxy alone).
-4. A thin `proxy.ts` optionally redirects unauthenticated visitors on protected route groups to
-   `/login` — a UX convenience, not the security boundary.
+1. `verifySession()` reads the Better Auth session and returns the user + `platformRole` +
+   `canCreateWorlds`.
+2. `requireMembership(worldId)` resolves the viewer's role/`readOnly` in that world.
+3. A single `authorize(worldId, action)` helper checks **platform role + world membership +
+   `readOnly`** and throws `unauthorized()` (401) or `forbidden()` (403).
+4. It runs **before any query** in server components and is **re-checked in every Server Action**.
+   `readOnly: true` blocks every mutation.
+5. Every Prisma query is **scoped by `worldId`** — the cardinal multi-tenant rule.
 
-## 5. Next.js 16 conventions (do not write stale patterns)
+## 5. Routing
 
-- **`middleware.ts` is deprecated** → use **`proxy.ts`** (export `proxy`). Proxy is for coarse
-  routing/redirects, not authoritative auth.
+All content is world-scoped by slug: `ttrpgworldbuilder.com/w/[worldSlug]/…`.
+
+- `/` — landing + public world directory (taglines) + login.
+- `/w/[slug]` — world home (anonymous: tagline + "request access"; member: full navigation).
+- `/w/[slug]/wiki/[article]` — an article.
+- `/w/[slug]/<world|locations|factions|pantheon|history|house-rules|recaps|characters|maps>` —
+  section indexes.
+- `/w/[slug]/characters/[id]` — a character (PC editable by its owner; NPCs GM-managed).
+- `/w/[slug]/admin` — GM dashboard (content, reveal, members, requests, export).
+- `/admin` — platform admin (GMs, worlds, quotas).
+
+## 6. Next.js 16 conventions (do not write stale patterns)
+
+- **`middleware.ts` is deprecated** → use **`proxy.ts`** (export `proxy`) for coarse redirects only.
 - **`unauthorized()` / `forbidden()`** (experimental; enable `experimental.authInterrupts`) render
-  `unauthorized.tsx` / `forbidden.tsx`. Use them in the DAL for auth/authorization.
+  `unauthorized.tsx` / `forbidden.tsx`. Use them in the DAL.
 - **`params`/`searchParams` are Promises** in page props (`await params`).
-- **Mutations** use **Server Actions** (`'use server'`) with form actions, re-checking auth.
-- **Caching** uses **Cache Components** (`'use cache'`, `cacheLife`, `cacheTag`) rather than the
-  old `fetch` cache options. Tag article pages so reveals invalidate the cache.
-- **Route handlers** live in `route.ts` (`GET`/`POST`/…).
-- Lint is plain `eslint` (not `next lint`, which was removed), using a lean flat config (see D8).
+- **Mutations** use **Server Actions** (`'use server'`), re-checking auth.
+- **Caching** uses **Cache Components** (`'use cache'`, `cacheLife`, `cacheTag`). Tag pages by world
+  so reveals invalidate correctly.
+- **Route handlers** live in `route.ts`.
+- Lint is plain `eslint` (not `next lint`) with the lean flat config (D9).
 
-## 6. Environment variables
+## 7. Environment variables
 
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | Neon Postgres connection string |
 | `AUTH_SECRET` | Better Auth session signing secret |
-| `BETTER_AUTH_URL` | Canonical app URL (Vercel) |
+| `BETTER_AUTH_URL` | Canonical app URL (`https://ttrpgworldbuilder.com`) |
 | `AUTH_TRUST_HOST` | `true` on Vercel |
 | `CLOUDINARY_CLOUD_NAME` / `_API_KEY` / `_API_SECRET` | Cloudinary credentials |
 | `NEXT_PUBLIC_APP_URL` | Public base URL (for links/meta) |
 
-## 7. Open assumptions (confirm before/at implementation)
-
-1. **Guest-GM reads gm-tier content** by default (flagged in §4); a future global
-   `hideGmSecretsFromGuests` setting will let the admin hide it.
-2. **No full-text search** initially; cross-links + recaps feed only. Can add Postgres FTS later.
-3. **Static image map** first; clickable pins later (Leaflet/MapLibre) if wanted.
-4. **No email service** initially: the GM creates accounts with a temporary password; players
-   change it on first login. (Magic-link / password-reset email can be added later.)
-
 ## 8. Content security (bots & scrapers)
 
 Content is stored as Markdown in **Postgres** (Neon), which is private and not directly reachable
-by crawlers. Security is therefore about **what the app serves**, not where the content is stored.
+by crawlers. Security is therefore about **what the app serves**.
 
-- **Auth-gated content is invisible to bots by default.** Anonymous crawlers (`GPTBot`,
-  `ClaudeBot`, `Google-Extended`, `CCBot`, generic scrapers, …) cannot authenticate, so
-  `player`- and `gm`-tier pages return a login redirect or `401` — never the Markdown.
+- **Auth-gated content is invisible to anonymous bots** — crawlers can't authenticate, so
+  `player`- and `gm`-tier pages return a login redirect or `401`, never the Markdown.
 - **The one real risk is accidental public caching.** Next 16 enables Cache Components / static
-  prerendering. If a gated page is prerendered (or edge-cached) before its auth check runs, its
-  HTML could become publicly fetchable. Rules:
-  1. `authorize()` runs **before** any data fetch in the server component; `unauthorized()` /
-     `forbidden()` interrupt the render (and inject `noindex`).
-  2. Gated routes render **dynamically** (`export const dynamic = 'force-dynamic'`, or rely on
-     `cookies()` / `unauthorized()`); no static prerender.
-  3. Authenticated responses send `Cache-Control: private, no-store`; never use a public
-     `cacheTag` or `use cache` for user-specific data.
-- **Public (`tier: public`) content is scrapable by design** and may be ingested into AI training
-  sets. `robots.txt` disallows and `noindex` / `noai` meta are **advisory** — reputable crawlers
-  mostly honor them, malicious ones ignore them. Keep the public surface minimal (a hook + login)
-  and put nothing sensitive in public metadata / OG tags / `sitemap.xml`.
-- **Auth cannot stop an authorized reader from copying.** A player — or anyone holding the shared
-  **Guest-GM reviewer account** (which reads `gm`-tier content) — can copy text out by hand. Treat
-  that account like a secret (strong password, revoke when done). Optional per-account
-  **watermarking** aids leak attribution, not prevention.
+  prerendering. Rules:
+  1. `authorize()` runs **before** any data fetch; `unauthorized()` / `forbidden()` interrupt render
+     (and inject `noindex`).
+  2. Gated routes render **dynamically** (`dynamic = 'force-dynamic'`, or rely on `cookies()` /
+     `unauthorized()`); no static prerender.
+  3. Authenticated responses send `Cache-Control: private, no-store`; never use a public `cacheTag`
+     or `use cache` for user-specific data.
+- **Public content is scrapable by design** — the landing, world directory, and taglines. `robots.txt`
+  disallows and `noindex` / `noai` meta are **advisory**. Keep the public surface minimal and put
+  nothing sensitive in public metadata / OG / `sitemap.xml`.
+- **Auth cannot stop an authorized reader from copying** — a player or a GM can copy text by hand.
+  Optional per-account **watermarking** helps attribution, not prevention.
 
-Controls (phase placement in the implementation plan): `robots.txt` + `X-Robots-Tag` on gated
-routes, `noindex` on gated pages, dynamic rendering + private caching, login rate limiting, and an
-optional Vercel WAF / bot-management layer plus a copyright / terms-of-use notice.
+## 9. Open assumptions (confirm before/at implementation)
+
+1. **One GM per world** in v1; co-GMs (and "hide content from other GMs") are deferred.
+2. **NPCs are characters** (`Character.kind = NPC`), not a separate article type; the "NPCs" and
+   "Characters" nav sections merge into **Characters** with a PC/NPC filter.
+3. **No full-text search** initially; cross-links + recaps feed only.
+4. **Static image map** first; clickable pins later.
+5. **No email service** initially; joins are in-app requests, accounts are admin/GM-created.
+6. **Display name:** docs use "TTRPG World Builder" (from the `ttrpg-world-builder` slug).

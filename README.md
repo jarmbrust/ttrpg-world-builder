@@ -1,25 +1,28 @@
-# World of Varun
+# TTRPG World Builder
 
-A read-mostly lore wiki for a tabletop RPG campaign (a D&D 5e-like system). The Game Master
-(GM) authors and curates the world; players read cross-linked lore, session recaps, and maps,
-and maintain their own character page. Built with Next.js 16 + Postgres and deployed on Vercel
-at [worldofvarun.com](https://worldofvarun.com).
+A multi-tenant campaign wiki for tabletop RPGs. Game Masters create and curate worlds;
+their players read cross-linked lore, session recaps, maps, and characters — and maintain
+their own characters. Content is authored as Markdown, stored in Postgres, and **never**
+committed to this public repository. Built with Next.js 16 + Postgres and deployed on Vercel at
+[ttrpgworldbuilder.com](https://ttrpgworldbuilder.com).
 
 ## What is it
 
-- **Purpose:** give the campaign's players easy access to the setting — regions, factions, NPCs,
-  the pantheon and religion, history, house rules, session recaps, characters, and maps.
-- **Access:** two roles — **player** and **GM** (the GM is the admin) — plus a temporary read-only
-  **guest mode** for each (Guest-Player, Guest-GM), used for demos and interviews.
-- **Privacy:** all lore lives in Postgres and is **never** committed to this public repository.
-  Content is authored in a private in-browser editor and "revealed" to players as the campaign
+- **Purpose:** let a GM stand up a private, cross-linked lore wiki for their campaign and share it
+  with their players — without publishing the world to the open web.
+- **Access:** a **platform admin** (the site owner), a **GM** per world, **players** per world, and
+  anonymous visitors (a public world directory with one-line taglines only). Per-world read-only
+  "viewer" access is available via a membership flag.
+- **Privacy:** every world's lore lives in Postgres and is **never** committed to this public
+  repository. GMs author in a private in-browser editor and "reveal" content as the campaign
   progresses.
+- **Closed beta:** GMs are invited/approved by the platform admin; players join by request.
 - **Status:** early scaffold — see the implementation plan for the phased roadmap.
 
 ## Index
 
-- **[Architecture](docs/architecture.md)** — stack, pinned versions, key decisions, and the access model.
-- **[Data Model](docs/data-model.md)** — Prisma schema, content types, and the URL map.
+- **[Architecture](docs/architecture.md)** — stack, pinned versions, key decisions, and access model.
+- **[Data Model](docs/data-model.md)** — multi-tenant Prisma schema and URL map.
 - **[Implementation Plan](docs/implementation-plan.md)** — phased build plan with task checklists.
 - **[Docs index](docs/README.md)** — entry point for all documentation.
 
@@ -36,5 +39,5 @@ pnpm build    # production build + type-check
 
 ## Stack
 
-Next.js 16 (App Router, Turbopack) · React 19 · TypeScript 6 · Tailwind CSS 4 · ESLint 10 ·
-Better Auth · Prisma 7 · Neon Postgres · Cloudinary · Vercel.
+Node.js 26 · Next.js 16 (App Router, Turbopack) · React 19 · TypeScript 6 · Tailwind CSS 4 ·
+ESLint 10 · Better Auth · Prisma 7 · Neon Postgres · Cloudinary · Vercel.
