@@ -1,0 +1,18 @@
+# dependencies / build output
+node_modules/
+.next/
+out/
+build/
+coverage/
+
+# lockfile (owned by pnpm)
+pnpm-lock.yaml
+
+# generated
+next-env.d.ts
+
+# git hooks (shell scripts)
+.husky/
+
+# hand-written Markdown docs are kept as-is
+*.md
